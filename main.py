@@ -60,7 +60,7 @@ class VerifyModal(discord.ui.Modal, title="Sistema de Verificación"):
     # Step 2 Input
     matricula = discord.ui.TextInput(
         label="Ingresa tu Matrícula",
-        placeholder="Ejemplo: A01234567",
+        placeholder="Ejemplo: 25XXXX",
         required=True
     )
 
