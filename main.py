@@ -3,29 +3,22 @@ from discord import app_commands
 from discord.ext import commands
 import json
 import os
-import asyncio
 
 # --- CONFIGURATION ---
 TOKEN = os.getenv("TOKEN")
-ROLE_ID = 1484790618894110741
-DB_FILE = "/app/data/matriculas.json"
-SECURITY_ANSWER = "gazzo"  # Case-insensitive answer to the cafeteria question
+DB_FILE = "matriculas.json"
+SECURITY_ANSWER = "galli" 
 
-class VerificationBot(commands.Bot):
-    def __init__(self):
-        intents = discord.Intents.default()
-        intents.members = True
-        intents.message_content = True
-        super().__init__(command_prefix="!", intents=intents)
+# --- ROLE IDs (REPLACE THESE) ---
+BASE_ROLE_ID = 1484790618894110741  # Main Verified Student Role
+GUEST_ROLE_ID = 1484793334638841886 # <--- REPLACE WITH GUEST ROLE ID
+YEAR_ROLES = {
+    "25": 1485472578977009796,  # Class of 2028
+    "24": 1485472578456780811,  # Class of 2027
+    "23": 1485472569048957041   # Class of 2026
+}
 
-    async def setup_hook(self):
-        # Sync slash commands with Discord
-        await self.tree.sync()
-        print(f"Synced slash commands for {self.user}")
-
-bot = VerificationBot()
-
-# --- DATABASE FUNCTIONS ---
+# --- DATABASE LOGIC ---
 
 def load_matriculas():
     try:
@@ -33,8 +26,7 @@ def load_matriculas():
             with open(DB_FILE, "r", encoding="utf-8") as f:
                 return json.load(f)
         return []
-    except Exception as e:
-        print(f"Error loading database: {e}")
+    except:
         return []
 
 def remove_matricula(matricula):
@@ -46,92 +38,115 @@ def remove_matricula(matricula):
         return True
     return False
 
-# --- MODAL SYSTEM (Verification Form) ---
+# --- STUDENT VERIFICATION MODAL ---
 
-class VerifyModal(discord.ui.Modal, title="Sistema de Verificación"):
-    # Step 1 Input
+class VerifyModal(discord.ui.Modal, title="Verificación de Estudiante"):
     cafeteria = discord.ui.TextInput(
-        label="¿Cuál es el nombre de la cafetería con G?",
-        placeholder="Escribe el nombre aquí...",
-        required=True,
-        min_length=3
+        label="¿Nombre de la cafetería con G?",
+        placeholder="Escribe aquí...",
+        required=True
     )
     
-    # Step 2 Input
     matricula = discord.ui.TextInput(
         label="Ingresa tu Matrícula",
-        placeholder="Ejemplo: 25XXXX",
-        required=True
+        placeholder="Ejemplo: 25123",
+        required=True,
+        min_length=5
     )
 
     async def on_submit(self, interaction: discord.Interaction):
-        # 1. Check Security Question (Case Insensitive)
+        # 1. Security Check
         if self.cafeteria.value.strip().lower() != SECURITY_ANSWER.lower():
-            embed = discord.Embed(
-                title="❌ Error de Seguridad",
-                description="La respuesta a la pregunta de seguridad es incorrecta.",
-                color=discord.Color.red()
-            )
+            embed = discord.Embed(title="❌ Error", description="Respuesta de seguridad incorrecta.", color=discord.Color.red())
             return await interaction.response.send_message(embed=embed, ephemeral=True)
 
-        # 2. Check Matrícula in Database
-        matricula_input = self.matricula.value.strip()
-        if remove_matricula(matricula_input):
-            # Success logic
+        # 2. Database Check
+        val_matricula = self.matricula.value.strip()
+        if remove_matricula(val_matricula):
             guild = interaction.guild
-            role = guild.get_role(ROLE_ID)
+            roles_to_add = []
             
-            if role:
-                try:
-                    await interaction.user.add_roles(role)
-                    embed = discord.Embed(
-                        title="✅ Verificación Exitosa",
-                        description=f"Bienvenido/a. Tu matrícula **{matricula_input}** ha sido validada y el rol ha sido asignado.",
-                        color=discord.Color.green()
-                    )
-                    await interaction.response.send_message(embed=embed, ephemeral=True)
-                except discord.Forbidden:
-                    await interaction.response.send_message("Error: No tengo permisos para asignar roles. Contacta a un admin.", ephemeral=True)
-            else:
-                await interaction.response.send_message("Error: El rol de verificación no existe en el servidor.", ephemeral=True)
+            # Base Student Role
+            base_role = guild.get_role(BASE_ROLE_ID)
+            if base_role: roles_to_add.append(base_role)
+
+            # Year Specific Role
+            prefix = val_matricula[:2]
+            if prefix in YEAR_ROLES:
+                year_role = guild.get_role(YEAR_ROLES[prefix])
+                if year_role: roles_to_add.append(year_role)
+
+            if roles_to_add:
+                await interaction.user.add_roles(*roles_to_add)
+                embed = discord.Embed(
+                    title="✅ ¡Verificado!",
+                    description=f"Bienvenido Estudiante. Matrícula **{val_matricula}** aceptada.",
+                    color=discord.Color.green()
+                )
+                await interaction.response.send_message(embed=embed, ephemeral=True)
         else:
-            # Fail logic
-            embed = discord.Embed(
-                title="❌ Matrícula Inválida",
-                description="La matrícula ingresada no existe o ya fue utilizada.",
-                color=discord.Color.red()
-            )
+            embed = discord.Embed(title="❌ Error", description="Matrícula no encontrada o ya usada.", color=discord.Color.red())
             await interaction.response.send_message(embed=embed, ephemeral=True)
 
-# --- SLASH COMMAND ---
+# --- CHOICE BUTTONS VIEW ---
 
-@bot.tree.command(name="verify", description="Inicia tu proceso de verificación de estudiante")
-@app_commands.checks.cooldown(1, 60, key=lambda i: (i.guild_id, i.user.id)) # 1 attempt per minute
+class ChoiceView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None) # No timeout so buttons stay active
+
+    @discord.ui.button(label="Estudiante PFLC", style=discord.ButtonStyle.primary, emoji="🎓")
+    async def estudiante_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        # When clicked, show the Modal
+        await interaction.response.send_modal(VerifyModal())
+
+    @discord.ui.button(label="Visitante", style=discord.ButtonStyle.secondary, emoji="👋")
+    async def visitante_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        # Assign Guest Role
+        guild = interaction.guild
+        guest_role = guild.get_role(GUEST_ROLE_ID)
+        
+        if guest_role:
+            try:
+                await interaction.user.add_roles(guest_role)
+                embed = discord.Embed(
+                    title="✅ Acceso de Visitante",
+                    description="Se te ha asignado el rol de **Visitante**. ¡Disfruta el servidor!",
+                    color=discord.Color.blue()
+                )
+                await interaction.response.send_message(embed=embed, ephemeral=True)
+            except discord.Forbidden:
+                await interaction.response.send_message("No tengo permisos para darte el rol.", ephemeral=True)
+        else:
+            await interaction.response.send_message("El rol de visitante no está configurado correctamente.", ephemeral=True)
+
+# --- BOT MAIN SETUP ---
+
+class MyBot(commands.Bot):
+    def __init__(self):
+        intents = discord.Intents.default()
+        intents.members = True
+        super().__init__(command_prefix="!", intents=intents)
+
+    async def setup_hook(self):
+        await self.tree.sync()
+
+bot = MyBot()
+
+@bot.tree.command(name="verify", description="Inicia tu proceso de ingreso")
 async def verify(interaction: discord.Interaction):
-    # Ensure command is used in a guild
-    if not interaction.guild:
-        return await interaction.response.send_message("Este comando solo funciona en el servidor.")
-
-    # Send the modal
-    await interaction.response.send_modal(VerifyModal())
-
-# Error handler for cooldowns
-@verify.error
-async def verify_error(interaction: discord.Interaction, error: app_commands.AppCommandError):
-    if isinstance(error, app_commands.CommandOnCooldown):
-        embed = discord.Embed(
-            title="⏳ Cooldown",
-            description=f"Por favor espera {error.retry_after:.1f} segundos antes de intentar de nuevo.",
-            color=discord.Color.red()
-        )
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+    embed = discord.Embed(
+        title="Sistema de Ingreso",
+        description="¿Eres Estudiante de la PFLC o un Visitante?",
+        color=discord.Color.blue()
+    )
+    embed.set_footer(text="Selecciona una opción abajo para continuar.")
+    
+    # Send embed with the buttons
+    await interaction.response.send_message(embed=embed, view=ChoiceView(), ephemeral=True)
 
 @bot.event
 async def on_ready():
-    print(f"Logged in as {bot.user.name}")
+    print(f"Bot listo: {bot.user}")
 
 if __name__ == "__main__":
-    if not TOKEN:
-        print("ERROR: No TOKEN found in environment variables.")
-    else:
-        bot.run(TOKEN)
+    bot.run(TOKEN)
