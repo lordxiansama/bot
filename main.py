@@ -9,7 +9,7 @@ import asyncio
 TOKEN = os.getenv("TOKEN")
 ROLE_ID = 1484790618894110741
 DB_FILE = "matriculas.json"
-SECURITY_ANSWER = "galli"  # Case-insensitive answer to the cafeteria question
+SECURITY_ANSWER = "gazzo"  # Case-insensitive answer to the cafeteria question
 
 class VerificationBot(commands.Bot):
     def __init__(self):
