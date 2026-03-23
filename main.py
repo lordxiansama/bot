@@ -7,7 +7,7 @@ import os
 # --- CONFIGURATION ---
 TOKEN = os.getenv("TOKEN")
 DB_FILE = "matriculas.json"
-SECURITY_ANSWER = "galli" 
+SECURITY_ANSWER = "gazzo" 
 
 # --- ROLE IDs (REPLACE THESE) ---
 BASE_ROLE_ID = 1484790618894110741  # Main Verified Student Role
