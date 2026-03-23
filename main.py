@@ -10,12 +10,12 @@ DB_FILE = "matriculas.json"
 SECURITY_ANSWER = "gazzo" 
 
 # --- ROLE IDs ---
-BASE_ROLE_ID = 1484790618894110741  # Main Verified Student Role
+BASE_ROLE_ID = 1484790618894110741  
 GUEST_ROLE_ID = 1484793334638841886 
 YEAR_ROLES = {
-    "25": 1485472578977009796,  # Class of 2028
-    "24": 1485472578456780811,  # Class of 2027
-    "23": 1485472569048957041   # Class of 2026
+    "25": 1485472578977009796,  
+    "24": 1485472578456780811,  
+    "23": 1485472569048957041   
 }
 
 # --- DATABASE LOGIC ---
@@ -71,27 +71,32 @@ class VerifyModal(discord.ui.Modal, title="Verificación de Estudiante"):
                 if year_role: roles_to_add.append(year_role)
 
             if roles_to_add:
-                await interaction.user.add_roles(*roles_to_add)
-                embed = discord.Embed(
-                    title="✅ ¡Verificado!",
-                    description=f"Bienvenido Estudiante. Matrícula **{val_matricula}** aceptada.",
-                    color=discord.Color.green()
-                )
-                await interaction.response.send_message(embed=embed, ephemeral=True)
+                try:
+                    await interaction.user.add_roles(*roles_to_add)
+                    embed = discord.Embed(
+                        title="✅ ¡Verificado!",
+                        description=f"Bienvenido Estudiante. Matrícula **{val_matricula}** aceptada.",
+                        color=discord.Color.green()
+                    )
+                    await interaction.response.send_message(embed=embed, ephemeral=True)
+                except discord.Forbidden:
+                    await interaction.response.send_message("No tengo permisos para dar roles.", ephemeral=True)
         else:
             embed = discord.Embed(title="❌ Error", description="Matrícula no encontrada o ya usada.", color=discord.Color.red())
             await interaction.response.send_message(embed=embed, ephemeral=True)
 
-# --- CHOICE BUTTONS VIEW ---
+# --- CHOICE BUTTONS VIEW (FIXED FOR PERSISTENCE) ---
 class ChoiceView(discord.ui.View):
     def __init__(self):
+        # timeout=None is required for persistent views
         super().__init__(timeout=None)
 
-    @discord.ui.button(label="Estudiante PFLC", style=discord.ButtonStyle.primary, emoji="🎓")
+    # custom_id is REQUIRED for persistent views
+    @discord.ui.button(label="Estudiante PFLC", style=discord.ButtonStyle.primary, emoji="🎓", custom_id="btn_estudiante")
     async def estudiante_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.send_modal(VerifyModal())
 
-    @discord.ui.button(label="Visitante", style=discord.ButtonStyle.secondary, emoji="👋")
+    @discord.ui.button(label="Visitante", style=discord.ButtonStyle.secondary, emoji="👋", custom_id="btn_visitante")
     async def visitante_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         guild = interaction.guild
         guest_role = guild.get_role(GUEST_ROLE_ID)
@@ -117,8 +122,7 @@ class MyBot(commands.Bot):
         intents.members = True
         intents.message_content = True 
 
-        # --- THIS SETS THE STATUS ---
-        # discord.Game shows "Playing ¡Hola! Soy Jaguabot..."
+        # Activity Status
         status_text = discord.Game(name="¡Hola! Soy Jaguabot, el bot de la PFLC.")
         
         super().__init__(
@@ -129,7 +133,7 @@ class MyBot(commands.Bot):
         )
 
     async def setup_hook(self):
-        # This keeps the buttons working even if the bot restarts
+        # Register the persistent view so it works after restarts
         self.add_view(ChoiceView()) 
         await self.tree.sync()
 
@@ -143,6 +147,7 @@ async def verify(interaction: discord.Interaction):
         color=discord.Color.blue()
     )
     embed.set_footer(text="Selecciona una opción abajo para continuar.")
+    # Use the persistent view
     await interaction.response.send_message(embed=embed, view=ChoiceView(), ephemeral=True)
 
 @bot.event
@@ -150,4 +155,7 @@ async def on_ready():
     print(f"Bot listo y conectado como: {bot.user}")
 
 if __name__ == "__main__":
-    bot.run(TOKEN)
+    if not TOKEN:
+        print("Error: TOKEN no encontrado.")
+    else:
+        bot.run(TOKEN)
