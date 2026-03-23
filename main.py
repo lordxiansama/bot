@@ -1,3 +1,19 @@
+import os
+import json
+
+DB_FILE = "/app/data/matriculas.json"
+
+def init_matriculas():
+    """Initialize matriculas file if it doesn't exist"""
+    if not os.path.exists(DB_FILE):
+        os.makedirs(os.path.dirname(DB_FILE), exist_ok=True)
+        initial_matriculas = ["250612", "250613", "250614", "250615"]
+        with open(DB_FILE, "w", encoding="utf-8") as f:
+            json.dump(initial_matriculas, f, indent=4)
+
+# Call this at startup, before any bot code
+init_matriculas()
+
 import discord
 from discord import app_commands
 from discord.ext import commands
