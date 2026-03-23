@@ -8,7 +8,7 @@ import asyncio
 # --- CONFIGURATION ---
 TOKEN = os.getenv("TOKEN")
 ROLE_ID = 1484790618894110741
-DB_FILE = "matriculas.json"
+DB_FILE = "/app/data/matriculas.json"
 SECURITY_ANSWER = "gazzo"  # Case-insensitive answer to the cafeteria question
 
 class VerificationBot(commands.Bot):
