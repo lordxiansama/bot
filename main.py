@@ -6,16 +6,6 @@ import os
 
 from discord.ext import commands
 
-# Define the activity here
-my_status = discord.Game(name="¡Hola! Soy Jaguabot, el bot de la PFLC.")
-
-bot = commands.Bot(
-    command_prefix="!", 
-    intents=discord.Intents.all(),
-    activity=my_status, # Sets the status here
-    status=discord.Status.online
-)
-
 # --- CONFIGURATION ---
 TOKEN = os.getenv("TOKEN")
 DB_FILE = "matriculas.json"
