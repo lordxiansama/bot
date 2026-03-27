@@ -4,24 +4,21 @@ from discord.ext import commands
 import json
 import os
 
-from discord.ext import commands
-
 # --- CONFIGURATION ---
 TOKEN = os.getenv("TOKEN")
 DB_FILE = "matriculas.json"
 SECURITY_ANSWER = "gazzo" 
 
-# --- ROLE IDs (REPLACE THESE) ---
-BASE_ROLE_ID = 1484790618894110741  # Main Verified Student Role
-GUEST_ROLE_ID = 1484793334638841886 # <--- REPLACE WITH GUEST ROLE ID
+# --- ROLE IDs ---
+BASE_ROLE_ID = 1484790618894110741  
+GUEST_ROLE_ID = 1484793334638841886 
 YEAR_ROLES = {
-    "25": 1485472578977009796,  # Class of 2028
-    "24": 1485472578456780811,  # Class of 2027
-    "23": 1485472569048957041   # Class of 2026
+    "25": 1485472578977009796,  
+    "24": 1485472578456780811,  
+    "23": 1485472569048957041   
 }
 
 # --- DATABASE LOGIC ---
-
 def load_matriculas():
     try:
         if os.path.exists(DB_FILE):
@@ -41,7 +38,6 @@ def remove_matricula(matricula):
     return False
 
 # --- STUDENT VERIFICATION MODAL ---
-
 class VerifyModal(discord.ui.Modal, title="Verificación de Estudiante"):
     cafeteria = discord.ui.TextInput(
         label="¿Nombre de la cafetería con G?",
@@ -57,53 +53,51 @@ class VerifyModal(discord.ui.Modal, title="Verificación de Estudiante"):
     )
 
     async def on_submit(self, interaction: discord.Interaction):
-        # 1. Security Check
         if self.cafeteria.value.strip().lower() != SECURITY_ANSWER.lower():
             embed = discord.Embed(title="❌ Error", description="Respuesta de seguridad incorrecta.", color=discord.Color.red())
             return await interaction.response.send_message(embed=embed, ephemeral=True)
 
-        # 2. Database Check
         val_matricula = self.matricula.value.strip()
         if remove_matricula(val_matricula):
             guild = interaction.guild
             roles_to_add = []
             
-            # Base Student Role
             base_role = guild.get_role(BASE_ROLE_ID)
             if base_role: roles_to_add.append(base_role)
 
-            # Year Specific Role
             prefix = val_matricula[:2]
             if prefix in YEAR_ROLES:
                 year_role = guild.get_role(YEAR_ROLES[prefix])
                 if year_role: roles_to_add.append(year_role)
 
             if roles_to_add:
-                await interaction.user.add_roles(*roles_to_add)
-                embed = discord.Embed(
-                    title="✅ ¡Verificado!",
-                    description=f"Bienvenido Estudiante. Matrícula **{val_matricula}** aceptada.",
-                    color=discord.Color.green()
-                )
-                await interaction.response.send_message(embed=embed, ephemeral=True)
+                try:
+                    await interaction.user.add_roles(*roles_to_add)
+                    embed = discord.Embed(
+                        title="✅ ¡Verificado!",
+                        description=f"Bienvenido Estudiante. Matrícula **{val_matricula}** aceptada.",
+                        color=discord.Color.green()
+                    )
+                    await interaction.response.send_message(embed=embed, ephemeral=True)
+                except discord.Forbidden:
+                    await interaction.response.send_message("No tengo permisos para dar roles.", ephemeral=True)
         else:
             embed = discord.Embed(title="❌ Error", description="Matrícula no encontrada o ya usada.", color=discord.Color.red())
             await interaction.response.send_message(embed=embed, ephemeral=True)
 
-# --- CHOICE BUTTONS VIEW ---
-
+# --- CHOICE BUTTONS VIEW (FIXED FOR PERSISTENCE) ---
 class ChoiceView(discord.ui.View):
     def __init__(self):
-        super().__init__(timeout=None) # No timeout so buttons stay active
+        # timeout=None is required for persistent views
+        super().__init__(timeout=None)
 
-    @discord.ui.button(label="Estudiante PFLC", style=discord.ButtonStyle.primary, emoji="🎓")
+    # custom_id is REQUIRED for persistent views
+    @discord.ui.button(label="Estudiante PFLC", style=discord.ButtonStyle.primary, emoji="🎓", custom_id="btn_estudiante")
     async def estudiante_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        # When clicked, show the Modal
         await interaction.response.send_modal(VerifyModal())
 
-    @discord.ui.button(label="Visitante", style=discord.ButtonStyle.secondary, emoji="👋")
+    @discord.ui.button(label="Visitante", style=discord.ButtonStyle.secondary, emoji="👋", custom_id="btn_visitante")
     async def visitante_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        # Assign Guest Role
         guild = interaction.guild
         guest_role = guild.get_role(GUEST_ROLE_ID)
         
@@ -112,24 +106,35 @@ class ChoiceView(discord.ui.View):
                 await interaction.user.add_roles(guest_role)
                 embed = discord.Embed(
                     title="✅ Acceso de Visitante",
-                    description="Se te ha asignado el rol de **Visitante**. ¡Disfruta el servidor!",
+                    description="Se te ha asignado el rol de **Visitante**.",
                     color=discord.Color.blue()
                 )
                 await interaction.response.send_message(embed=embed, ephemeral=True)
             except discord.Forbidden:
                 await interaction.response.send_message("No tengo permisos para darte el rol.", ephemeral=True)
         else:
-            await interaction.response.send_message("El rol de visitante no está configurado correctamente.", ephemeral=True)
+            await interaction.response.send_message("El rol de visitante no está configurado.", ephemeral=True)
 
 # --- BOT MAIN SETUP ---
-
 class MyBot(commands.Bot):
     def __init__(self):
         intents = discord.Intents.default()
         intents.members = True
-        super().__init__(command_prefix="!", intents=intents)
+        intents.message_content = True 
+
+        # Activity Status
+        status_text = discord.Game(name="¡Hola! Soy Jaguabot, el bot de la PFLC.")
+        
+        super().__init__(
+            command_prefix="!", 
+            intents=intents,
+            activity=status_text,
+            status=discord.Status.online
+        )
 
     async def setup_hook(self):
+        # Register the persistent view so it works after restarts
+        self.add_view(ChoiceView()) 
         await self.tree.sync()
 
 bot = MyBot()
@@ -142,13 +147,15 @@ async def verify(interaction: discord.Interaction):
         color=discord.Color.blue()
     )
     embed.set_footer(text="Selecciona una opción abajo para continuar.")
-    
-    # Send embed with the buttons
+    # Use the persistent view
     await interaction.response.send_message(embed=embed, view=ChoiceView(), ephemeral=True)
 
 @bot.event
 async def on_ready():
-    print(f"Bot listo: {bot.user}")
+    print(f"Bot listo y conectado como: {bot.user}")
 
 if __name__ == "__main__":
-    bot.run(TOKEN)
+    if not TOKEN:
+        print("Error: TOKEN no encontrado.")
+    else:
+        bot.run(TOKEN)
